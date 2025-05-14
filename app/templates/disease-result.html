@@ -1,14 +1,32 @@
+{% extends 'layout.html' %}
 
-{% extends 'layout.html' %} {% block body %}
-
-
-<div class="container py-2 mx-auto my-50 h-10 " style="margin: 9rem;">
+{% block body %}
+<div class="container py-5 mx-auto" style="margin: 5rem;">
   <div class="row">
-      <div class="col-sm py-2 py-md-3">
-          <div class="card card-body" style="justify-content: center; background-color:blanchedalmond">
-            <p class="text-center" style="color: black; font-size: 22px;">{{ prediction }}</p>
-          </div>
+    <div class="col-sm py-2 py-md-3">
+      <div class="card card-body text-center" style="background-color: blanchedalmond;">
+        <h3 style="color: rgb(100, 100, 100); font-size: 24px;"><b>Prediction Results</b></h3>
+        <hr>
+        <p style="color: rgb(189, 108, 108); font-size: 22px;">
+          <strong>Model's Prediction:</strong> {{ model_prediction }}
+        </p>
+        <p style="color: rgb(108, 148, 189); font-size: 22px;">
+          <strong>Google's Prediction:</strong> {{ google_prediction }}
+        </p>
       </div>
+    </div>
+  </div>
+
+  <!-- Weather Information -->
+  <div class="row mt-4">
+    <div class="col-sm">
+      <div class="card card-body text-center">
+        <h3>Weather Details for {{ city }}</h3>
+        <p><strong>Temperature:</strong> {{ temperature }} °C</p>
+        <p><strong>Humidity:</strong> {{ humidity }}%</p>
+        <p><strong>Condition:</strong> {{ condition }}</p>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

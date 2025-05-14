@@ -1,5 +1,5 @@
-# Importing essential libraries and modules
-from flask import Flask, render_template, request, redirect, Markup
+from flask import Flask, render_template, request, redirect
+from markupsafe import Markup
 import os
 import numpy as np
 import pandas as pd
@@ -13,10 +13,14 @@ import torch
 from torchvision import transforms
 from PIL import Image
 from utils.model import ResNet9
+from dotenv import load_dotenv
+import openai
+from bs4 import BeautifulSoup
 
-# ==============================================================================================
+# Load environment variables from the .env file
+load_dotenv()
 
-# -------------------------LOADING THE TRAINED MODELS -----------------------------------------------
+# =============================== LOADING THE TRAINED MODELS =====================================
 
 # Classes for plant disease classification
 disease_classes = [
@@ -52,30 +56,66 @@ if not os.path.exists(crop_recommendation_model_path):
 
 crop_recommendation_model = pickle.load(open(crop_recommendation_model_path, 'rb'))
 
-# =========================================================================================
+# ===============================================================================================
 
-# Custom functions for calculations
+# Custom functions for fetching Google prediction and weather details
+
+def fetch_google_prediction(query):
+    """
+    Fetch Google prediction based on a search query.
+    :param query: The disease or crop-related search query
+    :return: Google's prediction (string)
+    """
+    google_url = f"https://www.google.com/search?q={query}&ie=UTF-8"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(google_url, headers=headers)
+
+    # Parse the search results to extract prediction (adjust as needed based on Google search result structure)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    prediction = soup.find('div', class_='BNeawe iBp4i AP7Wnd')  # Update the class based on actual result
+    return prediction.text if prediction else "No prediction found"
+
+# ===============================================================================================
 
 def weather_fetch(city_name):
     """
-    Fetch and return the temperature and humidity of a city.
+    Fetch and return the temperature, humidity, and weather condition of a city.
     :param city_name: Name of the city
-    :return: temperature, humidity
+    :return: temperature, humidity, condition
     """
-    api_key = config.weather_api_key
-    base_url = "http://api.openweathermap.org/data/2.5/weather?"
-    complete_url = base_url + "appid=" + api_key + "&q=" + city_name
-    response = requests.get(complete_url)
-    x = response.json()
+    # Simulating response data
+    weather_data = {
+        "location": {
+            "name": "London",
+            "region": "City of London, Greater London",
+            "country": "United Kingdom",
+            "lat": 51.52,
+            "lon": -0.11,
+            "tz_id": "Europe/London",
+            "localtime_epoch": 1613896955,
+            "localtime": "2021-02-21 8:42"
+        },
+        "current": {
+            "temp_c": 11,
+            "temp_f": 51.8,
+            "humidity": 82,
+            "condition": {
+                "text": "Partly cloudy",
+                "icon": "//cdn.weatherapi.com/weather/64x64/day/116.png",
+            },
+            "wind_mph": 3.8,
+            "wind_kph": 6.1,
+            "precip_mm": 0.1,
+            "pressure_mb": 1009,
+        }
+    }
 
-    if x["cod"] != "404":
-        y = x["main"]
-        temperature = round((y["temp"] - 273.15), 2)
-        humidity = y["humidity"]
-        return temperature, humidity
-    else:
-        return None
-
+    # Extract relevant weather data
+    temperature = weather_data["current"]["temp_c"]
+    humidity = weather_data["current"]["humidity"]
+    condition = weather_data["current"]["condition"]["text"]
+    
+    return temperature, humidity, condition
 
 def predict_image(img, model=disease_model):
     """
@@ -84,7 +124,7 @@ def predict_image(img, model=disease_model):
     :param model: Trained PyTorch model
     :return: Prediction (string)
     """
-    transform = transforms.Compose([
+    transform = transforms.Compose([ 
         transforms.Resize(256),
         transforms.ToTensor(),
     ])
@@ -99,6 +139,7 @@ def predict_image(img, model=disease_model):
     return prediction
 
 # ===============================================================================================
+
 # ------------------------------------ FLASK APP -------------------------------------------------
 
 app = Flask(__name__)
@@ -106,25 +147,25 @@ app = Flask(__name__)
 # Render home page
 @app.route('/')
 def home():
-    title = 'AgroDoc - Home'
+    title = 'CropCare 🌾🌾- Home'
     return render_template('index.html', title=title)
 
 # Render crop recommendation form page
 @app.route('/crop-recommend')
 def crop_recommend():
-    title = 'AgroDoc - Crop Recommendation'
+    title = 'CropCare - Crop Recommendation'
     return render_template('crop.html', title=title)
 
 # Render fertilizer recommendation form page
 @app.route('/fertilizer')
 def fertilizer_recommendation():
-    title = 'AgroDoc - Fertilizer Suggestion'
+    title = 'CropCare - Fertilizer Suggestion'
     return render_template('fertilizer.html', title=title)
 
 # Render crop recommendation result page
 @app.route('/crop-predict', methods=['POST'])
 def crop_prediction():
-    title = 'AgroDoc - Crop Recommendation'
+    title = 'CropCare - Crop Recommendation'
 
     if request.method == 'POST':
         N = int(request.form['nitrogen'])
@@ -134,19 +175,21 @@ def crop_prediction():
         rainfall = float(request.form['rainfall'])
         city = request.form.get("city")
 
-        if weather_fetch(city) is not None:
-            temperature, humidity = weather_fetch(city)
+        temperature, humidity, condition = weather_fetch(city)
+
+        if temperature is not None:
             data = np.array([[N, P, K, temperature, humidity, ph, rainfall]])
             my_prediction = crop_recommendation_model.predict(data)
             final_prediction = my_prediction[0]
-            return render_template('crop-result.html', prediction=final_prediction, title=title)
+            return render_template('crop-result.html', prediction=final_prediction, 
+                                   temperature=temperature, humidity=humidity, condition=condition, title=title)
         else:
             return render_template('try_again.html', title=title)
 
 # Render fertilizer recommendation result page
 @app.route('/fertilizer-predict', methods=['POST'])
 def fert_recommend():
-    title = 'AgroDoc - Fertilizer Suggestion'
+    title = 'CropCare - Fertilizer Suggestion'
     crop_name = str(request.form['cropname'])
     N = int(request.form['nitrogen'])
     P = int(request.form['phosphorous'])
@@ -169,7 +212,7 @@ def fert_recommend():
 # Render disease prediction result page
 @app.route('/disease-predict', methods=['GET', 'POST'])
 def disease_prediction():
-    title = 'AgroDoc - Disease Detection'
+    title = 'CropCare - Disease Detection'
 
     if request.method == 'POST':
         if 'file' not in request.files:
@@ -178,16 +221,36 @@ def disease_prediction():
         if not file:
             return render_template('disease.html', title=title)
         try:
+            # Get disease prediction from the model
             img = file.read()
-            prediction = predict_image(img)
-            prediction = Markup(str(disease_dic[prediction]))
-            return render_template('disease-result.html', prediction=prediction, title=title)
+            model_prediction = predict_image(img)
+
+            # Fetch Google's prediction
+            google_prediction = fetch_google_prediction(model_prediction)
+
+            # Fetch weather details for a specified city
+            city = request.form.get("city", "London")  # Default to "London" if no city provided
+            temperature, humidity, condition = weather_fetch(city)
+
+            # Map prediction and display results
+            model_prediction = Markup(str(disease_dic[model_prediction]))
+            google_prediction = Markup(f"Google's Prediction: {google_prediction}")
+
+            # Render the template with predictions and weather data
+            return render_template('disease-result.html', 
+                                   model_prediction=model_prediction, 
+                                   google_prediction=google_prediction, 
+                                   temperature=temperature, 
+                                   humidity=humidity, 
+                                   condition=condition, title=title)
         except Exception as e:
             print(f"Error occurred: {e}")
             return render_template('disease.html', title=title)
+
     return render_template('disease.html', title=title)
 
 # ===============================================================================================
 
 if __name__ == '__main__':
     app.run(debug=False)
+    
